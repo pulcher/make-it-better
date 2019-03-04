@@ -5,32 +5,26 @@
 
 #include <SDHCI.h>
 #include <Audio.h>
-
 #include <MediaPlayer.h>
-
 #include <OutputMixer.h>
-
 #include <MemoryUtil.h>
 
 #define SYSTEM_INIT_MP3 "init.mp3"
+#define MAX_QUIPS 64
 
 const int buttonPin = 2;      // Pin used to detect a button press
 const int ledPin    = 13;     // Pin for the highside of the button LED
 
 SDClass theSD;
-
 AudioClass *theAudio;
-
 File myDir;
 err_t err;
 
-int numQuips = 0;
-int currentQuip = 0;
-bool ErrEnd = false;
+int numQuips          = 0;
+int currentQuip       = 0;
+bool ErrEnd           = false;
 bool audioInitialized = false;
-
-String foundQuips[64];
-
+String foundQuips[MAX_QUIPS];
 
 // Variables used in interrupt service routines and other parts of the program should be volatile
 // 2 is used to indicate there has not been an interrupt yet
@@ -46,30 +40,27 @@ volatile bool canPlayQuip = false;
  *
  * When audio internal error occurc, this function will be called back.
  */
-
 static void audio_attention_cb(const ErrorAttentionParam *atprm)
 {
   puts("Attention!");
 
   if (atprm->error_code >= AS_ATTENTION_CODE_WARNING)
-    {
-      ErrEnd = true;
-   }
+  {
+    ErrEnd = true;
+  }
 
   setupAudio();
 }
 
 void setup() {
-  /* Open serial communications and wait for port to open */
   Serial.begin(115200);
 
   Serial.println("initializing storage...");
   initializeQuips();
 
   Serial.println("Reading available quips from the SD card...");
-
   myDir = theSD.open("/");
-  printDirectory(myDir, 0);
+  getQuips(myDir, 0);
   myDir.close();
 
   Serial.print("Found ");
@@ -87,76 +78,26 @@ void setup() {
   // attaching and interrupt to the pin
   attachInterrupt(buttonPin, pinIsr, CHANGE);
 
-
-  // initMemoryPools();
-
-  // createStaticPools(MEM_LAYOUT_PLAYER);
-
   setupAudio();
 
-  // // start audio system
-  // theAudio = AudioClass::getInstance();
-
-  // theAudio->begin(audio_attention_cb);
-
-  // puts("initialization Audio Library");
-
-  // /* Set clock mode to normal */
-  // theAudio->setRenderingClockMode(AS_CLKMODE_NORMAL);
-
-  // /* Set output device to speaker with first argument.
-  //  * If you want to change the output device to I2S,
-  //  * specify "AS_SETPLAYER_OUTPUTDEVICE_I2SOUTPUT" as an argument.
-  //  * Set speaker driver mode to LineOut with second argument.
-  //  * If you want to change the speaker driver mode to other,
-  //  * specify "AS_SP_DRV_MODE_1DRIVER" or "AS_SP_DRV_MODE_2DRIVER" or "AS_SP_DRV_MODE_4DRIVER"
-  //  * as an argument.
-  //  */
-  // theAudio->setPlayerMode(AS_SETPLAYER_OUTPUTDEVICE_SPHP, AS_SP_DRV_MODE_LINEOUT);
-
-  // /*
-  //  * Set main player to decode stereo mp3. Stream sample rate is set to "auto detect"
-  //  * Search for MP3 decoder in "/mnt/sd0/BIN" directory
-  //  */
-  // err = theAudio->initPlayer(AudioClass::Player0, AS_CODECTYPE_MP3, "/mnt/sd0/BIN", AS_SAMPLINGRATE_AUTO, AS_CHANNEL_STEREO);
-
-  // /* Verify player initialize */
-  // if (err != AUDIOLIB_ECODE_OK)
-  //   {
-  //     printf("Player0 initialize error\n");
-  //     exit(1);
-  //   }
-
-  // /* Main volume set to -16.0 dB */
-  // theAudio->setVolume(-80);
-
-  // play initi startup
-  //playQuip("init.mp3");
   playQuip(SYSTEM_INIT_MP3);
 }
 
 void loop() {
 
-  //noInterrupts();
-
   if (canPlayQuip)
   {
-    //nointerrupts();
     playQuip(foundQuips[currentQuip]);
     //playQuip(SYSTEM_INIT_MP3);
     currentQuip++;
     Serial.print("currentQuip: ");
     Serial.println(currentQuip);
-    //interruptes();
   }
 
   if (currentQuip >= numQuips)
   {
     currentQuip = 0;
   }
-
-  //interrupts();
-
   delay(200);
 }
 
@@ -182,14 +123,14 @@ void initializeQuips()
   numQuips = 0;
 }
 
-void printDirectory(File dir, int numTabs) {
+void getQuips(File dir, int numTabs) {
 
   String endTest = ".mp3";
 
   while (true) {
 
     File entry =  dir.openNextFile();
-    if (! entry) {
+    if (!entry || numQuips >= MAX_QUIPS) {
       // no more files
       break;
     }
@@ -213,43 +154,44 @@ void playQuip(String fileName)
 
   Serial.print("Playing: ");
   Serial.println(fileName);
-    /* Open file placed on SD card */
+  
+  /* Open file placed on SD card */
   File myFile = theSD.open(fileName);
 
   /* Verify file open */
   if (!myFile)
-    {
-      printf("File open error\n");
-      exit(1);
-    }
+  {
+    printf("File open error\n");
+    exit(1);
+  }
+  
   printf("Open! %s\n", myFile.name());
 
   theAudio->setPlayerMode(AS_SETPLAYER_OUTPUTDEVICE_SPHP, AS_SP_DRV_MODE_LINEOUT);
 
   puts("player initialization");
-    /*
+  
+  /*
    * Set main player to decode stereo mp3. Stream sample rate is set to "auto detect"
    * Search for MP3 decoder in "/mnt/sd0/BIN" directory
    */
+  
   err = theAudio->initPlayer(AudioClass::Player0, AS_CODECTYPE_MP3, "/mnt/sd0/BIN", AS_SAMPLINGRATE_AUTO, AS_CHANNEL_MONO);
-  //err = theAudio->initPlayer(AudioClass::Player0, AS_CODECTYPE_MP3, "/mnt/sd0/BIN", AS_SAMPLINGRATE_96000, AS_BITLENGHT_24, AS_CHANNEL_STEREO);
-
+  
   /* Send first frames to be decoded */
   err = theAudio->writeFrames(AudioClass::Player0, myFile);
 
   printf("Error: %d\n", err);
 
   if ((err != AUDIOLIB_ECODE_OK) && (err != AUDIOLIB_ECODE_FILEEND))
-    {
-      printf("File Read Error! =%d\n",err);
-      myFile.close();
-      exit(1);
-    }
+  {
+    printf("File Read Error! =%d\n",err);
+    myFile.close();
+    exit(1);
+  }
 
   puts("Play!");
 
-  // /* Main volume set to -16.0 dB */
-  // theAudio->setVolume(-160);
   theAudio->startPlayer(AudioClass::Player0);
 
   delay(100);
@@ -269,6 +211,7 @@ void playQuip(String fileName)
 void setupAudio()
 {
   puts("checking audio initialization");
+ 
   // make sure we are not calling this if there is nothing to call
   if(audioInitialized)
   {
@@ -278,7 +221,7 @@ void setupAudio()
     audioInitialized = false;
   }
 
-    // start audio system
+  // start audio system
   theAudio = AudioClass::getInstance();
 
   theAudio->begin(audio_attention_cb);
@@ -290,31 +233,12 @@ void setupAudio()
 
   puts("setting player mode");
 
-  /* Set output device to speaker with first argument.
-   * If you want to change the output device to I2S,
-   * specify "AS_SETPLAYER_OUTPUTDEVICE_I2SOUTPUT" as an argument.
-   * Set speaker driver mode to LineOut with second argument.
-   * If you want to change the speaker driver mode to other,
-   * specify "AS_SP_DRV_MODE_1DRIVER" or "AS_SP_DRV_MODE_2DRIVER" or "AS_SP_DRV_MODE_4DRIVER"
-   * as an argument.
-   */
-  //theAudio->setPlayerMode(AS_SETPLAYER_OUTPUTDEVICE_SPHP, AS_SP_DRV_MODE_LINEOUT);
-  //theAudio->setPlayerMode(AS_SETPLAYER_OUTPUTDEVICE_SPHP);
-
-  /*
-   * Set main player to decode stereo mp3. Stream sample rate is set to "auto detect"
-   * Search for MP3 decoder in "/mnt/sd0/BIN" directory
-   */
-  //err = theAudio->initPlayer(AudioClass::Player0, AS_CODECTYPE_MP3, "/mnt/sd0/BIN", 128000, AS_CHANNEL_MONO);
-  //err = theAudio->
-  //err = theAudio->initPlayer(AudioClass::Player0, AS_CODECTYPE_MP3, "/mnt/sd0/BIN", AS_SAMPLINGRATE_AUTO, AS_CHANNEL_MONO);
-
   /* Verify player initialize */
   if (err != AUDIOLIB_ECODE_OK)
-    {
-      printf("Player0 initialize error\n");
-      exit(1);
-    }
+  {
+    printf("Player0 initialize error\n");
+    exit(1);
+  }
 
   /* Main volume set to -16.0 dB */
   theAudio->setVolume(60);
