@@ -80,6 +80,8 @@ void setup() {
 
   setupAudio();
 
+  randomSeed(analogRead(0));
+
   playQuip(SYSTEM_INIT_MP3);
 }
 
@@ -87,8 +89,9 @@ void loop() {
 
   if (canPlayQuip)
   {
-    playQuip(foundQuips[currentQuip]);
+    //playQuip(foundQuips[currentQuip]);
     //playQuip(SYSTEM_INIT_MP3);
+    playQuip(foundQuips[(int)random(numQuips)]);
     currentQuip++;
     Serial.print("currentQuip: ");
     Serial.println(currentQuip);
